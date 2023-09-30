@@ -1,5 +1,10 @@
 import { App, Editor, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting } from 'obsidian';
-
+import Kuroshiro from "kuroshiro";
+// Initialize kuroshiro with an instance of analyzer (You could check the [apidoc](#initanalyzer) for more information):
+// For this example, you should npm install and import the kuromoji analyzer first
+import KuromojiAnalyzer from "kuroshiro-analyzer-kuromoji";
+// Instantiate
+import * as kuromoji from "kuromoji";
 // Remember to rename these classes and interfaces!
 
 interface MyPluginSettings {
@@ -12,9 +17,32 @@ const DEFAULT_SETTINGS: MyPluginSettings = {
 
 export default class MyPlugin extends Plugin {
 	settings: MyPluginSettings;
-
+	//tokenizer: kuromoji.Tokenizer<kuromoji.IpadicFeatures>;
+	kuroshiro = new Kuroshiro();
+	
 	async onload() {
 		await this.loadSettings();
+
+		const dictBase = this.manifest.dir + "/dict/"
+		const dictPath2 = this.app.vault.adapter.getResourcePath(dictBase)
+		console.log("DictPath: " + dictPath2)
+
+		await this.kuroshiro.init(new KuromojiAnalyzer({ dictPath: dictPath2 }))
+
+
+		/*if (this.tokenizer == null) {
+			// Load and prepare tokenizer
+			kuromoji.builder({ dicPath: dictPath2 }).build( (error, _tokenizer) => {
+				if (error != null) {
+					console.log(error);
+				}
+				console.log("this: " + this)
+				console.log("this.tokenizer = " + this.tokenizer)
+				this.tokenizer = _tokenizer;
+
+			});
+		}*/
+
 
 		// This creates an icon in the left ribbon.
 		const ribbonIconEl = this.addRibbonIcon('dice', 'Sample Plugin', (evt: MouseEvent) => {
@@ -62,6 +90,38 @@ export default class MyPlugin extends Plugin {
 					// This command will only show up in Command Palette when the check function returns true
 					return true;
 				}
+			}
+		});
+
+		this.addCommand({
+			id: 'add-ruby',
+			name: 'Add <ruby> tag for selected text',
+			editorCallback: async (editor: Editor, view: MarkdownView) => {
+				console.log(editor.getSelection());
+				//const selected = editor.getSelection();
+
+
+				const cursor = editor.getCursor();
+				const lineText = editor.getLine(cursor.line);
+				console.log("Input: " + lineText)
+				const result = await this.kuroshiro.convert(lineText, { to: "hiragana", mode: "furigana" });
+				console.log("Output: " + result)
+				editor.replaceSelection(result)
+				/*if (this.tokenizer != null) {
+					const path = this.tokenizer.tokenize(lineText);
+					console.log(path);
+	
+					let output = ""
+					path.forEach(element => {
+						const foo = " - " + element.basic_form + " = " + element.pronunciation + "\n"
+						output = output + foo
+					});
+					editor.replaceSelection(output);
+	
+				}*/
+				//const { line, ch } = editor.getCursor();
+				//editor.setCursor({ line, ch: ch - tail.length });
+				return true;
 			}
 		});
 
