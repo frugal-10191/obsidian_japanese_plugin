@@ -1,4 +1,4 @@
-import { App, Editor, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting } from 'obsidian';
+import { App, Editor, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting, MarkdownPostProcessorContext } from 'obsidian';
 import Kuroshiro from "kuroshiro";
 // Initialize kuroshiro with an instance of analyzer (You could check the [apidoc](#initanalyzer) for more information):
 // For this example, you should npm install and import the kuromoji analyzer first
@@ -147,6 +147,8 @@ export default class MyPlugin extends Plugin {
 			}
 		});
 
+		this.registerMarkdownCodeBlockProcessor("morphology", (source, el, ctx) => this.codeProcessor(source, el, ctx))
+
 		// This adds a settings tab so the user can configure various aspects of the plugin
 		this.addSettingTab(new SampleSettingTab(this.app, this));
 
@@ -158,6 +160,139 @@ export default class MyPlugin extends Plugin {
 
 		// When registering intervals, this function will automatically clear the interval when the plugin is disabled.
 		this.registerInterval(window.setInterval(() => console.log('setInterval'), 5 * 60 * 1000));
+	}
+
+	async codeProcessor(source: string, el: HTMLElement, ctx: MarkdownPostProcessorContext) {
+		console.log(source);
+		//const selected = editor.getSelection();
+
+		console.log(this)
+		console.log(this.analyser)
+		if (this.analyser == null) {
+			console.log("No Analyser: ")
+			console.log(this)
+			return 
+		}
+		const result = await this.analyser.parse(source);
+		console.log(result)
+
+
+		// Create Table
+		const table = el.createEl("table");
+
+		// Table header
+		const head = table.createEl("thead");
+		const headrow = head.createEl("tr")
+		headrow.createEl("th", {text: "Basic Form"})
+		//headrow.createEl("th", {text: "Conjugated Form"})
+		//headrow.createEl("th", {text: "Conjugated Type"})
+		headrow.createEl("th", {text: "Type"})
+		//headrow.createEl("th", {text: "Surface Form"})
+		headrow.createEl("th", {text: "Hiragana"})
+
+		const body = table.createEl("tbody");
+		for (let i = 0; i < result.length; i++) {
+			const row = body.createEl("tr");
+	
+			const element = result[i];
+			let type = element.pos
+			let detail1 = element.pos_detail_1
+			
+			if (type == "名詞") {
+				type = "Noun"
+				if (detail1 == "形容動詞語幹") {
+					type = "Adjectival noun"
+					detail1 = ""
+				} else if (detail1 == "一般") {
+					type = "Universal Adjectival Noun"
+					detail1=""
+				}
+			}
+			else if (type == "助詞") {
+				type = "Particle"
+				if (detail1 == "係助詞") {
+					type = "Binding Particle"
+					detail1 = ""
+				} else if (detail1=="格助詞") {
+					type = "Case Marking Particle"
+					detail1=""
+					if (element.pos_detail_2="一般") {
+						type = "Universal Case Marking Particle"
+					}
+				}
+			}
+			else if (type == "記号") {
+				type = "Symbol"
+				if (detail1 == "読点") {
+					type = "Comma"
+					detail1 = ""
+				}
+			}
+			else if (type == "フィラー") {
+				type = "Filler"
+			}
+			else if (type == "助動詞") {
+				type = "Bound Auxillary"
+
+				if (element.conjugated_type.indexOf("特殊")==0) {
+					type = "na-Adjective"
+					element.conjugated_type=""
+				}
+				if (element.conjugated_form=="基本形") type += " - Basic Form"
+				if (element.conjugated_form=="連用形") type += " - Continuing Form"
+				element.conjugated_form=""
+			}
+			else if (type == "動詞") {
+				type = "Verb"
+				if (element.conjugated_type.indexOf("五段")==0) {
+					type = "Godan Verb"
+					element.conjugated_type=""
+				}
+				if (element.conjugated_form=="基本形") type += " - Basic Form"
+				if (element.conjugated_form=="連用形") type += " - Continuing Form"
+				element.conjugated_form=""
+			} else if (type == "形容詞") {
+				type = "Adjective"
+				if (element.conjugated_type.indexof("形容詞")==0) {
+					type = "i-Adjective"
+					element.conjugated_type=""
+				}
+			} else if (type == "副詞") {
+				type = "Adverb"
+			} else if (type == "接頭詞") {
+				type = "Prefix"
+			} else if (type == "連体詞") {
+				type = "pre-noun adjectival"
+			}
+			
+			
+			row.createEl("td", {text: element.basic_form})
+			//row.createEl("td", {text: element.conjugated_form})
+			//row.createEl("td", {text: element.conjugated_type})
+			row.createEl("td", {text: type})
+			//row.createEl("td", {text: element.surface_form})
+			row.createEl("td", {text: Kuroshiro.Util.kanaToHiragna(element.pronunciation)})
+
+
+
+			/*
+			basic_form:  "さやか"
+			conjugated_form: "*"
+			conjugated_type: "*"
+			pos: "名詞"
+			pos_detail_1: "形容動詞語幹"
+			pos_detail_2: "*"
+			pos_detail_3: "*"
+			pronunciation: "サヤカ"
+			reading: "サヤカ"
+			surface_form: "さやか"
+			verbose: 
+			word_id: 309430
+			word_position: 1
+			word_type: "KNOWN"
+			*/
+
+		}
 	}
 
 	onunload() {
