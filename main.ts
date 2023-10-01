@@ -5,6 +5,7 @@ import Kuroshiro from "kuroshiro";
 import KuromojiAnalyzer from "kuroshiro-analyzer-kuromoji";
 // Instantiate
 import * as kuromoji from "kuromoji";
+import * as path from 'path';
 // Remember to rename these classes and interfaces!
 
 interface MyPluginSettings {
@@ -19,29 +20,17 @@ export default class MyPlugin extends Plugin {
 	settings: MyPluginSettings;
 	//tokenizer: kuromoji.Tokenizer<kuromoji.IpadicFeatures>;
 	kuroshiro = new Kuroshiro();
-	
+	analyser:  KuromojiAnalyzer = null
+
 	async onload() {
 		await this.loadSettings();
 
+		// Load the tokenizer
 		const dictBase = this.manifest.dir + "/dict/"
 		const dictPath2 = this.app.vault.adapter.getResourcePath(dictBase)
-		console.log("DictPath: " + dictPath2)
-
-		await this.kuroshiro.init(new KuromojiAnalyzer({ dictPath: dictPath2 }))
-
-
-		/*if (this.tokenizer == null) {
-			// Load and prepare tokenizer
-			kuromoji.builder({ dicPath: dictPath2 }).build( (error, _tokenizer) => {
-				if (error != null) {
-					console.log(error);
-				}
-				console.log("this: " + this)
-				console.log("this.tokenizer = " + this.tokenizer)
-				this.tokenizer = _tokenizer;
-
-			});
-		}*/
+		const arr = dictPath2.split('?', 2)
+		this.analyser = new KuromojiAnalyzer({ dictPath: arr[0] })
+		await this.kuroshiro.init(this.analyser)
 
 
 		// This creates an icon in the left ribbon.
@@ -49,6 +38,7 @@ export default class MyPlugin extends Plugin {
 			// Called when the user clicks the icon.
 			new Notice('This is a notice!');
 		});
+
 		// Perform additional things with the ribbon
 		ribbonIconEl.addClass('my-plugin-ribbon-class');
 
@@ -93,6 +83,8 @@ export default class MyPlugin extends Plugin {
 			}
 		});
 
+		// This command takes the currently selected text and converts it to the same text, but with <ruby>
+		// tags added.
 		this.addCommand({
 			id: 'add-ruby',
 			name: 'Add <ruby> tag for selected text',
@@ -101,26 +93,56 @@ export default class MyPlugin extends Plugin {
 				//const selected = editor.getSelection();
 
 
-				const cursor = editor.getCursor();
-				const lineText = editor.getLine(cursor.line);
-				console.log("Input: " + lineText)
-				const result = await this.kuroshiro.convert(lineText, { to: "hiragana", mode: "furigana" });
+				const cursor = editor.getCursor()
+				const selectedText = editor.getSelection()
+				//const lineText = editor.getLine(cursor.line)
+				console.log("Input: " + selectedText)
+				const result = await this.kuroshiro.convert(selectedText, { to: "hiragana", mode: "furigana" });
 				console.log("Output: " + result)
 				editor.replaceSelection(result)
-				/*if (this.tokenizer != null) {
-					const path = this.tokenizer.tokenize(lineText);
-					console.log(path);
-	
-					let output = ""
-					path.forEach(element => {
-						const foo = " - " + element.basic_form + " = " + element.pronunciation + "\n"
-						output = output + foo
-					});
-					editor.replaceSelection(output);
-	
-				}*/
-				//const { line, ch } = editor.getCursor();
-				//editor.setCursor({ line, ch: ch - tail.length });
+				return true;
+			}
+		});
+
+		// This command takes the currently selected text and converts it to the same text, but with <ruby>
+		// tags added.
+		this.addCommand({
+			id: 'jlt-morphology',
+			name: 'breakdown the morphology for selected text',
+			editorCallback: async (editor: Editor, view: MarkdownView) => {
+				console.log(editor.getSelection());
+				//const selected = editor.getSelection();
+
+
+				const cursor = editor.getCursor()
+				const selectedText = editor.getSelection()
+				//const lineText = editor.getLine(cursor.line)
+				console.log("Input: " + selectedText)
+
+				const result = await this.analyser.parse(selectedText);
+				console.log(result)
+				const lineCount = editor.lineCount()
+				let output = "\n\n Surface Form | Type | Hirigana | Jisho\n----|----|----|----"
+				for (let index = 0; index < result.length; index++) {
+					const element = result[index];
+					let type = element.pos
+					
+					if (type == "名詞") type = "Noun"
+					else if (type == "助詞") type = "Particle"
+					else if (type == "記号") type = "Symbol"
+					else if (type == "フィラー") type = "Filler"
+					else if (type == "助動詞") type = "Bound Auxillary"
+					else if (type == "動詞") type = "Verb"
+
+					output = output + "\n" + 
+						element.surface_form + " | " + 
+						type + " | " + 
+						Kuroshiro.Util.kanaToHiragna(element.pronunciation) + 
+						" | ["+element.surface_form+"](https://jisho.org/search/"+ element.surface_form + ")"
+
+				}
+				editor.setLine(lineCount, output + "\n")
+
 				return true;
 			}
 		});
